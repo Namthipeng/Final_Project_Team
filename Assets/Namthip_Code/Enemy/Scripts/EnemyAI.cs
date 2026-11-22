@@ -19,6 +19,7 @@ public class EnemyAI : MonoBehaviour
     [SerializeField, Range(10, 360)] private float sightAngle = 120f;
     [SerializeField] private float senseRange = 3f;      // ใกล้กว่านี้ รู้ตัวแม้อยู่ข้างหลัง
     [SerializeField] private float loseSightTime = 3f;   // หลุดสายตานานเท่านี้แล้วเลิกตาม
+    [SerializeField] private float alertTime = 10f;      // โดนยิงแล้วรู้ตำแหน่งผู้เล่นนานเท่านี้
 
     [Header("Combat")]
     [SerializeField] private float runSpeed = 4.5f;
@@ -27,6 +28,7 @@ public class EnemyAI : MonoBehaviour
     [SerializeField] private float fireInterval = 0.6f;
     [SerializeField] private float spreadAngle = 4f;     // ยิ่งมากยิ่งยิงพลาด
     [SerializeField] private float turnSpeed = 360f;
+    [SerializeField] private MuzzleFlash muzzleFlash;
 
     private static readonly int SpeedHash = Animator.StringToHash("Speed");
     private static readonly int ShootHash = Animator.StringToHash("Shoot");
@@ -42,6 +44,8 @@ public class EnemyAI : MonoBehaviour
     private float waitTimer;
     private float lostTimer;
     private float nextFireTime;
+    private int lastHealth;
+    private float alertTimer;
 
     private Vector3 Eye => transform.position + Vector3.up * 1.5f;
     private Vector3 PlayerTarget => player.position + Vector3.up * 1f;
@@ -51,6 +55,7 @@ public class EnemyAI : MonoBehaviour
         agent = GetComponent<NavMeshAgent>();
         health = GetComponent<Health>();
         if (animator == null) animator = GetComponentInChildren<Animator>();
+        lastHealth = health.Max;
     }
 
     private void OnEnable()
@@ -73,6 +78,8 @@ public class EnemyAI : MonoBehaviour
     private void Update()
     {
         if (state == State.Dead) return;
+
+        if (alertTimer > 0f) alertTimer -= Time.deltaTime;
 
         FindPlayer();
         bool canSee = CanSeePlayer();
@@ -171,6 +178,7 @@ public class EnemyAI : MonoBehaviour
     {
         nextFireTime = Time.time + fireInterval;
         animator.SetTrigger(ShootHash);
+        if (muzzleFlash != null) muzzleFlash.Play();
 
         Vector3 dir = (PlayerTarget - Eye).normalized;
         dir = Quaternion.Euler(
@@ -180,26 +188,28 @@ public class EnemyAI : MonoBehaviour
         Debug.DrawRay(Eye, dir * attackRange, Color.red, 0.1f);
 
         if (!RaycastFirst(Eye, dir, attackRange * 1.5f, out RaycastHit hit)) return;
-        if (hit.collider.GetComponentInParent<EnemyAI>() != null) return; // กระสุนไม่ทำร้ายพวกเดียวกัน
+        if (hit.collider.GetComponentInParent<EnemyAI>() != null) return; // ไม่ทำร้ายพวกเดียวกัน
 
         hit.collider.GetComponentInParent<IDamageable>()?.TakeDamage(damage);
     }
 
     // ---------------- การมองเห็น ----------------
 
+    // หาผู้เล่นจากสคริปต์ PlayerController (ไม่ต้องพึ่ง Tag)
     private void FindPlayer()
     {
         if (player != null) return;
-        GameObject go = GameObject.FindGameObjectWithTag("Player");
-        if (go == null) return;
-        player = go.transform;
-        playerHealth = go.GetComponentInParent<Health>();
+        PlayerController pc = FindAnyObjectByType<PlayerController>();
+        if (pc == null) return;
+        player = pc.transform;
+        playerHealth = pc.GetComponent<Health>();
     }
 
     private bool CanSeePlayer()
     {
         if (player == null) return false;
         if (playerHealth != null && playerHealth.IsDead) return false;
+        if (alertTimer > 0f) return true; // โดนยิงอยู่ ถือว่ารู้ตำแหน่งผู้เล่นเสมอ
 
         Vector3 to = PlayerTarget - Eye;
         float dist = to.magnitude;
@@ -231,19 +241,31 @@ public class EnemyAI : MonoBehaviour
         return found;
     }
 
-    // ---------------- โดนยิง / ตาย ----------------
+    // ---------------- โดนยิง / ตาย / รีเซ็ต ----------------
 
     private void OnDamaged(int current, int max)
     {
-        // โดนยิงตอนเดินสำรวจ → หันมาไล่ผู้เล่นทันที
-        if (current > 0 && state == State.Patrol && player != null) EnterChase();
+        // HP ต้อง "ลดลง" ถึงจะนับว่าโดนยิง (ResetHealth ทำให้ HP เพิ่ม จึงไม่ไล่)
+        bool tookDamage = current < lastHealth;
+        lastHealth = current;
+
+        Debug.Log($"[Enemy] โดนยิง HP={current} tookDamage={tookDamage}");
+        if (!tookDamage || current <= 0) return;
+
+        FindPlayer();
+        if (player == null) { Debug.LogWarning("[Enemy] หาผู้เล่นไม่เจอ"); return; }
+
+        alertTimer = alertTime; // รู้แล้วว่าใครยิง
+
+        if (state == State.Patrol) EnterChase();
+        Debug.Log("[Enemy] เข้าโหมดไล่");
     }
 
     private void Die()
     {
         if (state == State.Dead) return;   // กันถูกเรียกซ้ำ
 
-        Debug.Log($"[NPC] {name} Die() ถูกเรียก");
+        
         state = State.Dead;
 
         // หยุด NavMeshAgent ให้เด็ดขาด
@@ -264,10 +286,37 @@ public class EnemyAI : MonoBehaviour
         foreach (Collider col in GetComponentsInChildren<Collider>())
             col.enabled = false;
 
-        Destroy(gameObject, 4f);   // หายไปหลัง 4 วินาที
+        // ซ่อนแทนการลบ เพื่อให้เกิดใหม่ได้
+        Invoke(nameof(Hide), 4f);
     }
 
-    // ---------------- วาดวงในหน้า Scene ให้ปรับค่าง่าย ----------------
+    private void Hide()
+    {
+        gameObject.SetActive(false);
+    }
+
+    // เรียกจาก EnemyRespawn ตอนผู้เล่นเกิดใหม่
+    public void ResetAI()
+    {
+        CancelInvoke(nameof(Hide)); // กัน Enemy ที่เพิ่งตายถูกซ่อนหลังรีสปอนไปแล้ว
+
+        state = State.Patrol;
+        patrolIndex = 0;
+        waitTimer = 0f;
+        lostTimer = 0f;
+        nextFireTime = 0f;
+        alertTimer = 0f;
+
+        health.ResetHealth();
+        lastHealth = health.Current;
+
+        animator.Rebind();   // กลับท่าเริ่มต้น เคลียร์ Trigger Die
+        animator.Update(0f);
+
+        GoToPatrolPoint();
+    }
+
+    // ---------------- วาดวงในหน้า Scene ----------------
 
     private void OnDrawGizmosSelected()
     {
