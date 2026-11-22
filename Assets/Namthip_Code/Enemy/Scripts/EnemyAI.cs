@@ -176,9 +176,10 @@ public class EnemyAI : MonoBehaviour
 
     private void Shoot()
     {
+        Debug.Log("Enemy Shoot, flash = " + muzzleFlash);
         nextFireTime = Time.time + fireInterval;
         animator.SetTrigger(ShootHash);
-        if (muzzleFlash != null) muzzleFlash.Play();
+        if (muzzleFlash != null) muzzleFlash.Play();    
 
         Vector3 dir = (PlayerTarget - Eye).normalized;
         dir = Quaternion.Euler(

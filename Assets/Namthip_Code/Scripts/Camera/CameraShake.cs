@@ -20,7 +20,7 @@ public class CameraShake : MonoBehaviour
 
     private void LateUpdate()
     {
-        // เอา offset ที่บวกไว้เฟรมก่อนออกก่อน (ไม่ว่ากล้องจะขยับไปไหนก็ไม่เพี้ยน)
+        
         transform.position -= appliedOffset;
         appliedOffset = Vector3.zero;
 
@@ -30,7 +30,7 @@ public class CameraShake : MonoBehaviour
         float fade = Mathf.Clamp01(timer / duration);
         Vector2 rnd = Random.insideUnitCircle * power * fade;
 
-        // สั่นตามแกนของกล้อง (หน้าจอ) ไม่ใช่แกนโลก
+        
         appliedOffset = transform.right * rnd.x + transform.up * rnd.y;
         transform.position += appliedOffset;
     }

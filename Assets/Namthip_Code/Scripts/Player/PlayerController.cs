@@ -94,6 +94,8 @@ public class PlayerController : MonoBehaviour
     // 2) ยืนปกติ / เดิน / วิ่ง
     void HandleMovement()
     {
+
+
         float h = Input.GetAxisRaw("Horizontal");
         float v = Input.GetAxisRaw("Vertical");
         Vector3 input = new Vector3(h, 0f, v).normalized;
@@ -108,7 +110,7 @@ public class PlayerController : MonoBehaviour
 
         Vector3 moveDir = camForward * input.z + camRight * input.x;
 
-        // เลือกความเร็วตามสถานะ
+        // เลือกความเร็วตามสถานะ  
         float targetSpeed;
         if (isAiming) targetSpeed = aimWalkSpeed;
         else if (Input.GetKey(KeyCode.LeftShift)) targetSpeed = runSpeed;
@@ -229,11 +231,14 @@ public class PlayerController : MonoBehaviour
     // เรียกจาก PlayerRespawn ตอนเกิดใหม่
     public void OnRespawn()
     {
+        Debug.Log("OnRespawn called");
         isDead = false;
         verticalVelocity = 0f;
         nextFireTime = 0f;
         currentAmmo = magazineSize;
         reserveAmmo = startReserveAmmo;
+
+        HealZone.ResetAll();
     }
 
     void OnGUI()
