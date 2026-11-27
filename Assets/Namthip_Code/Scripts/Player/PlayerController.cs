@@ -151,7 +151,7 @@ public class PlayerController : MonoBehaviour
         // แปลงทิศเดินให้เป็นทิศ "ซ้าย/ขวา/หน้า/หลัง" เทียบกับตัวละคร
         // (moveDir เป็น normalized อยู่แล้ว ถ้าไม่กดปุ่มจะเป็น 0)
         Vector3 localDir = transform.InverseTransformDirection(moveDir);
-        
+
     }
 
     // 3) ยิงปืน

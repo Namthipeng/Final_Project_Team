@@ -1,97 +1,80 @@
 using UnityEngine;
 
+/// <summary>
+/// กล้องตามผู้เล่น: เลื่อนนุ่มๆ + เขยิบไปทางเมาส์ตอนเล็ง + หมุนมุมด้วย Q/E
+/// แปะบน Main Camera (ห้ามเป็นลูกของ Player)
+/// </summary>
 public class TopDownCamera : MonoBehaviour
 {
     [Header("Target")]
-    public Transform target;
-    public Vector3 targetOffset = new Vector3(0, 1f, 0);
+    public Transform target;                 // ลาก Player มาใส่ (ว่างไว้ = หา PlayerController เอง)
+    public float lookHeight = 1.2f;          // จุดที่กล้องโฟกัสบนตัวผู้เล่น
 
-    [Header("Angle & Distance")]
-    [Range(30f, 85f)] public float pitch = 60f;     // ห้ามถึง 90
-    public float yaw = 0f;
-    public float distance = 12f;
-    public float minDistance = 6f;
-    public float maxDistance = 20f;
-    public float zoomSpeed = 2f;
-    public float zoomSmooth = 8f;
+    [Header("Position")]
+    public float distance = 8f;              // ระยะห่าง
+    public float height = 7f;                // ความสูง
+    public float yaw = 0f;                   // มุมหมุนรอบตัวผู้เล่น (องศา)
+    public float followSpeed = 8f;
 
-    [Header("Follow")]
-    public float smoothTime = 0.12f;
+    [Header("Mouse Lead")]
+    public bool followMouse = true;
+    public float mouseLeadAmount = 0.25f;    // 0 = ไม่เขยิบ, ยิ่งมากยิ่งเขยิบไปทางเมาส์
+    public float maxLead = 3f;               // ระยะเขยิบสูงสุด (เมตร)
+    public bool onlyWhenAiming = true;       // เขยิบเฉพาะตอนกดคลิกขวา
 
-    [Header("Aim Rotate (คลิกขวาค้าง)")]
-    public float mouseSensitivity = 3f;
-    public bool lockCursorWhileAiming = true;       // ล็อกเมาส์ให้หมุนได้ไม่จำกัด
+    [Header("Rotate (Q / E)")]
+    public bool allowRotate = true;
+    public float rotateSpeed = 90f;          // องศา/วินาที
 
-    [Header("Rotate (Q / E) ไม่บังคับ")]
-    public bool allowKeyRotate = true;
-    public float keyRotateSpeed = 90f;
+    private PlayerController player;
+    private Camera cam;
+    private Vector3 lead;
 
-    [Header("Bounds (ไม่บังคับ)")]
-    public bool useBounds = false;
-    public Vector2 minBounds = new Vector2(-20, -20);
-    public Vector2 maxBounds = new Vector2(20, 20);
-
-    private Vector3 velocity;
-    private float targetDistance;
-
-    void Start()
+    private void Start()
     {
-        targetDistance = distance;
-        if (target != null)
+        cam = GetComponent<Camera>();
+        if (target == null)
         {
-            Quaternion rot = Quaternion.Euler(pitch, yaw, 0f);
-            transform.rotation = rot;
-            transform.position = Focus() - rot * Vector3.forward * distance;
+            player = FindAnyObjectByType<PlayerController>();
+            if (player != null) target = player.transform;
         }
+        else player = target.GetComponent<PlayerController>();
     }
 
-    void LateUpdate()
+    private void LateUpdate()
     {
         if (target == null) return;
-        float dt = Time.deltaTime;
 
-        // ซูมด้วยล้อเมาส์
-        float scroll = Input.mouseScrollDelta.y;
-        if (Mathf.Abs(scroll) > 0.01f)
-            targetDistance = Mathf.Clamp(targetDistance - scroll * zoomSpeed, minDistance, maxDistance);
-        distance = Mathf.Lerp(distance, targetDistance, zoomSmooth * dt);
-
-        // คลิกขวาค้าง = หมุนกล้องตามเมาส์ (ตัวละครหันตามกล้อง)
-        if (Input.GetMouseButtonDown(1) && lockCursorWhileAiming)
+        // หมุนมุมกล้องด้วย Q / E
+        if (allowRotate)
         {
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
-        }
-        if (Input.GetMouseButton(1))
-        {
-            yaw += Input.GetAxis("Mouse X") * mouseSensitivity;
-        }
-        if (Input.GetMouseButtonUp(1) && lockCursorWhileAiming)
-        {
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
+            if (Input.GetKey(KeyCode.Q)) yaw -= rotateSpeed * Time.deltaTime;
+            if (Input.GetKey(KeyCode.E)) yaw += rotateSpeed * Time.deltaTime;
         }
 
-        // หมุนด้วย Q / E
-        if (allowKeyRotate)
+        // เขยิบไปทางเมาส์
+        Vector3 desiredLead = Vector3.zero;
+        bool canLead = followMouse && (!onlyWhenAiming || (player != null && player.IsAiming));
+        if (canLead && cam != null)
         {
-            if (Input.GetKey(KeyCode.Q)) yaw -= keyRotateSpeed * dt;
-            if (Input.GetKey(KeyCode.E)) yaw += keyRotateSpeed * dt;
+            Vector3 focus = target.position + Vector3.up * lookHeight;
+            Plane plane = new Plane(Vector3.up, focus);
+            Ray ray = cam.ScreenPointToRay(Input.mousePosition);
+            if (plane.Raycast(ray, out float d))
+            {
+                Vector3 offset = ray.GetPoint(d) - focus;
+                offset.y = 0f;
+                desiredLead = Vector3.ClampMagnitude(offset * mouseLeadAmount, maxLead);
+            }
         }
+        lead = Vector3.Lerp(lead, desiredLead, 6f * Time.deltaTime);
 
-        Quaternion rot = Quaternion.Euler(pitch, yaw, 0f);
+        // คำนวณตำแหน่งกล้อง
+        Vector3 focusPoint = target.position + Vector3.up * lookHeight + lead;
+        Quaternion rot = Quaternion.Euler(0f, yaw, 0f);
+        Vector3 desiredPos = focusPoint + rot * new Vector3(0f, height, -distance);
 
-        Vector3 focus = Focus();
-        if (useBounds)
-        {
-            focus.x = Mathf.Clamp(focus.x, minBounds.x, maxBounds.x);
-            focus.z = Mathf.Clamp(focus.z, minBounds.y, maxBounds.y);
-        }
-
-        Vector3 desired = focus - rot * Vector3.forward * distance;
-        transform.position = Vector3.SmoothDamp(transform.position, desired, ref velocity, smoothTime);
-        transform.rotation = rot;
+        transform.position = Vector3.Lerp(transform.position, desiredPos, followSpeed * Time.deltaTime);
+        transform.rotation = Quaternion.LookRotation(focusPoint - transform.position);
     }
-
-    Vector3 Focus() => target.position + targetOffset;
 }

@@ -48,14 +48,17 @@ public class EnemyAI : MonoBehaviour
     private float alertTimer;
 
     private Vector3 Eye => transform.position + Vector3.up * 1.5f;
-    private Vector3 PlayerTarget => player.position + Vector3.up * 1f;
+    private CharacterController playerCC;
+
+    private Vector3 PlayerTarget =>
+        playerCC != null ? playerCC.bounds.center : player.position + Vector3.up * 1f;
 
     private void Awake()
     {
         agent = GetComponent<NavMeshAgent>();
         health = GetComponent<Health>();
         if (animator == null) animator = GetComponentInChildren<Animator>();
-        lastHealth = health.Max;
+        
     }
 
     private void OnEnable()
@@ -73,6 +76,7 @@ public class EnemyAI : MonoBehaviour
     private void Start()
     {
         GoToPatrolPoint();
+        lastHealth = health.Max;
     }
 
     private void Update()
@@ -82,6 +86,7 @@ public class EnemyAI : MonoBehaviour
         if (alertTimer > 0f) alertTimer -= Time.deltaTime;
 
         FindPlayer();
+
         bool canSee = CanSeePlayer();
 
         switch (state)
@@ -176,7 +181,7 @@ public class EnemyAI : MonoBehaviour
 
     private void Shoot()
     {
-        Debug.Log("Enemy Shoot, flash = " + muzzleFlash);
+        Debug.Log("Enemy Shoot, flash = " + muzzleFlash);   
         nextFireTime = Time.time + fireInterval;
         animator.SetTrigger(ShootHash);
         if (muzzleFlash != null) muzzleFlash.Play();    
@@ -204,6 +209,7 @@ public class EnemyAI : MonoBehaviour
         if (pc == null) return;
         player = pc.transform;
         playerHealth = pc.GetComponent<Health>();
+        playerCC = pc.GetComponent<CharacterController>();
     }
 
     private bool CanSeePlayer()
